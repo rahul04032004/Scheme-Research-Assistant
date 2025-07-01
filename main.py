@@ -1,3 +1,8 @@
+# main.py - Scheme Research Assistant Web App
+# Author: Rahul Raj
+# Description: A Streamlit-based tool to summarize government scheme articles and answer user queries.
+# Technologies used: Streamlit, FAISS, Gemini API, SentenceTransformer
+
 import streamlit as st
 import configparser
 import numpy as np
@@ -8,15 +13,16 @@ import requests
 from sentence_transformers import SentenceTransformer
 from utils.process import extract_text_from_url, embed_and_index, save_index, load_index
 
-# ------------------------- Config -------------------------
+# ------------------------- Page Config -------------------------
 st.set_page_config(page_title="🛠️ Scheme Research Assistant", layout="wide")
 
-# Load API Key
+# ------------------------- Load API Key -------------------------
 config = configparser.ConfigParser()
 config.read(".config")
 api_key = config["gemini"]["api_key"]
 
-# ------------------------- Styles -------------------------
+# ------------------------- Custom Styles -------------------------
+# This section applies custom CSS for layout, background, and button styling.
 st.markdown("""
     <style>
     body {
@@ -58,20 +64,26 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ------------------------- Title -------------------------
-st.markdown('<div class="title-container"><h1>🛠️ Scheme Research Assistant</h1><p>Empowering citizens with insights on government schemes</p></div>', unsafe_allow_html=True)
+# ------------------------- Title Banner -------------------------
+st.markdown("""
+<div class="title-container">
+    <h1>🛠️ Scheme Research Assistant</h1>
+    <p>Empowering citizens with insights on government schemes</p>
+</div>
+""", unsafe_allow_html=True)
 
-# ------------------------- Session State -------------------------
+# ------------------------- Session State Initialization -------------------------
+# Holds loaded scheme texts and FAISS index in session for persistence across reruns.
 if 'all_texts' not in st.session_state:
     st.session_state.all_texts = []
 if 'index' not in st.session_state:
     st.session_state.index = None
 
-# ------------------------- File Paths -------------------------
+# ------------------------- File Paths for Persistence -------------------------
 TEXT_CACHE_FILE = "text_cache.pkl"
 INDEX_FILE = "faiss_store_gemini.pkl"
 
-# ------------------------- Load Data -------------------------
+# ------------------------- Load Cached Data (if any) -------------------------
 if os.path.exists(TEXT_CACHE_FILE):
     try:
         with open(TEXT_CACHE_FILE, "rb") as f:
@@ -85,23 +97,27 @@ if os.path.exists(INDEX_FILE):
     except Exception as e:
         st.warning(f"Error loading index: {e}")
 
-# ------------------------- Helpers -------------------------
+# ------------------------- Helper Functions -------------------------
 def is_valid_url(url):
+    """Check if a given string is a valid URL."""
     regex = re.compile(r'^(https?|ftp):\/\/[^\s\/$.?#].[^\s]*$', re.IGNORECASE)
     return re.match(regex, url) is not None
 
-# ------------------------- Sidebar -------------------------
+# ------------------------- Sidebar: URL Input & Processing -------------------------
 with st.sidebar:
     st.header("📄 Scheme Documents")
     urls_input = st.text_area("Paste scheme URLs (one per line):", height=200)
+
     if st.button("Process URLs"):
         urls = [u.strip() for u in urls_input.splitlines() if u.strip()]
         invalid_urls = [u for u in urls if not is_valid_url(u)]
+
         if invalid_urls:
             st.error(f"Invalid URLs: {', '.join(invalid_urls)}")
         else:
             with st.spinner("Fetching and processing..."):
                 new_texts = []
+
                 for url in urls:
                     try:
                         text = extract_text_from_url(url)
@@ -109,17 +125,24 @@ with st.sidebar:
                             new_texts.append(text)
                     except Exception as e:
                         st.warning(f"{url} failed: {str(e)}")
+
                 if new_texts:
+                    # Update session state and reindex using FAISS
                     st.session_state.all_texts.extend(new_texts)
                     index, _ = embed_and_index(st.session_state.all_texts)
                     save_index(index, INDEX_FILE)
                     st.session_state.index = index
+
+                    # Save text cache to local file
                     with open(TEXT_CACHE_FILE, "wb") as f:
                         pickle.dump(st.session_state.all_texts, f)
+
                     st.success(f"Indexed {len(new_texts)} new documents!")
 
+    # Cache clear functionality
     st.markdown("---")
     st.caption(f"📦 Documents loaded: {len(st.session_state.all_texts)}")
+
     if st.button("Clear Cache"):
         if os.path.exists(TEXT_CACHE_FILE):
             os.remove(TEXT_CACHE_FILE)
@@ -129,9 +152,10 @@ with st.sidebar:
         st.session_state.index = None
         st.success("Cache cleared!")
 
-# ------------------------- Query Input -------------------------
+# ------------------------- User Query Input -------------------------
 st.subheader("🧠 Ask a Question")
 query = st.text_input("Enter your question here:", placeholder="e.g. What are the benefits of PM-KISAN scheme?")
+
 if st.button("Get Answer"):
     if not query.strip():
         st.warning("Please enter a question.")
@@ -139,13 +163,19 @@ if st.button("Get Answer"):
         st.error("Please process at least one scheme URL first.")
     else:
         try:
+            # Encode user query
             model_embed = SentenceTransformer("all-MiniLM-L6-v2")
             query_vec = model_embed.encode([query])
+
+            # Search in FAISS index
             D, I = st.session_state.index.search(np.array(query_vec), k=1)
+
             if I.size == 0 or I[0][0] >= len(st.session_state.all_texts):
                 st.warning("No relevant scheme found.")
             else:
                 matched_text = st.session_state.all_texts[I[0][0]]
+
+                # Construct LLM prompt for Gemini
                 prompt = f"""
 You are a government schemes expert. Based on the content below, answer the user's question.
 
@@ -161,13 +191,15 @@ Also summarize into:
 4. Required Documents
 5. Official Website or Contact
 """
+
+                # Call Gemini API
                 headers = {"Content-Type": "application/json"}
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}]
-                }
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
                 gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+
                 with st.spinner("Generating response..."):
                     r = requests.post(gemini_url, headers=headers, json=payload)
+
                     if r.status_code == 200:
                         answer = r.json()["candidates"][0]["content"]["parts"][0]["text"]
                         st.markdown("### 📋 Answer:")
