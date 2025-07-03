@@ -33,7 +33,7 @@ Built using:
 
 ## 📸 Preview
 
-![App UI Preview](https://github.com/rahul04032004/Scheme-Research-Assistant/assets/preview-screenshot.png) <!-- Replace with actual screenshot URL -->
+![App UI Preview](https://github.com/rahul04032004/Scheme-Research-Assistant/blob/main/web%20app%20screenshot.png) <!-- Replace with actual screenshot URL -->
 
 ---
 
@@ -112,18 +112,4 @@ Feel free to open an issue or submit a PR! 💡
 Made with ❤️ by Rahul Raj
 📫 Connect on LinkedIn
 
-📄 License
-This project is open source under the MIT License.
 
-yaml
-Copy
-Edit
-
----
-
-Let me know if you'd like:
-- A sample `LICENSE`
-- `requirements.txt`
-- A screenshot preview template for the app thumbnail
-
-Happy coding! 🧠💡
